@@ -3,19 +3,31 @@
     "id": "TC_001",
     "requirement_id": "KAN-5",
     "title": "Create User - Happy Path with Valid Mandatory Details",
-    "description": "Verify that an admin can successfully create a new user when all mandatory fields are provided with valid data. Confirms HTTP 201 response and correct response payload.",
+    "description": "Verify that an admin can successfully create a new user when all mandatory fields are provided with valid data and optional fields are included.",
     "preconditions": [
-      "Admin user has a valid JWT token with CREATE_USER permission.",
-      "No existing user with email john.doe@test.com in the system."
+      "Admin user exists with a valid JWT token having CREATE_USER permission",
+      "Supported roles list includes ADMIN and USER"
     ],
     "test_type": "API",
     "priority": "P0",
     "steps": [
       {
         "step_number": 1,
-        "action": "Send POST request to /api/v1/users with required headers and payload.",
+        "action": "Send POST request to /api/v1/users with valid Authorization header and JSON payload",
         "input_data": "{\"firstName\":\"John\",\"lastName\":\"Doe\",\"email\":\"john.doe@test.com\",\"password\":\"Password@123\",\"role\":\"ADMIN\",\"phoneNumber\":\"9876543210\",\"dateOfBirth\":\"1995-08-15\"}",
-        "expected_result": "Response status 201 Created and response body contains userId, message, status='ACTIVE', createdDate."
+        "expected_result": "HTTP 201 Created returned"
+      },
+      {
+        "step_number": 2,
+        "action": "Validate response payload fields",
+        "input_data": "",
+        "expected_result": "Response contains userId (non\u2011empty, unique format), message \"User created successfully\", status \"ACTIVE\", and createdDate in ISO\u20118601 UTC format"
+      },
+      {
+        "step_number": 3,
+        "action": "Query the Users table for the newly created email",
+        "input_data": "",
+        "expected_result": "Record exists with matching firstName, lastName, role=ADMIN, status=ACTIVE, createdBy set to admin's userId, createdDate matches response createdDate"
       }
     ],
     "test_data": {
@@ -27,7 +39,7 @@
       "phoneNumber": "9876543210",
       "dateOfBirth": "1995-08-15"
     },
-    "expected_result": "User is created, unique userId is returned, status defaults to ACTIVE, audit fields createdBy (admin) and createdDate are populated.",
+    "expected_result": "User is created successfully, HTTP 201 returned, audit fields populated and persisted in DB",
     "tags": [
       "smoke",
       "regression",
@@ -38,234 +50,84 @@
   {
     "id": "TC_002",
     "requirement_id": "KAN-5",
-    "title": "Create User - Boundary Test for FirstName and LastName Length (50 chars)",
-    "description": "Validate that the system accepts firstName and lastName exactly at the maximum allowed length of 50 characters.",
+    "title": "Create User - Duplicate Email Failure",
+    "description": "Ensure the system rejects creation of a user when the email address already exists in the system.",
     "preconditions": [
-      "Admin JWT token is valid."
+      "A user with email duplicate.user@test.com already exists",
+      "Admin JWT token is valid"
     ],
     "test_type": "API",
-    "priority": "P1",
+    "priority": "P0",
     "steps": [
       {
         "step_number": 1,
-        "action": "Send POST request to /api/v1/users with firstName and lastName each 50 characters long.",
-        "input_data": "{\"firstName\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"lastName\":\"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\",\"email\":\"maxlen.user@test.com\",\"password\":\"Passw0rd!\",\"role\":\"USER\"}",
-        "expected_result": "Response status 201 Created and user is created successfully."
+        "action": "Send POST request to /api/v1/users with payload containing duplicate email",
+        "input_data": "{\"firstName\":\"Alice\",\"lastName\":\"Smith\",\"email\":\"duplicate.user@test.com\",\"password\":\"Password@123\",\"role\":\"USER\",\"phoneNumber\":\"1234567890\",\"dateOfBirth\":\"1990-01-01\"}",
+        "expected_result": "HTTP 409 Conflict returned"
+      },
+      {
+        "step_number": 2,
+        "action": "Validate error response payload",
+        "input_data": "",
+        "expected_result": "errorCode equals \"USR_409\" and message contains \"Email already exists\""
       }
     ],
     "test_data": {
-      "firstName": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      "lastName": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-      "email": "maxlen.user@test.com",
-      "password": "Passw0rd!",
-      "role": "USER"
+      "firstName": "Alice",
+      "lastName": "Smith",
+      "email": "duplicate.user@test.com",
+      "password": "Password@123",
+      "role": "USER",
+      "phoneNumber": "1234567890",
+      "dateOfBirth": "1990-01-01"
     },
-    "expected_result": "User created with provided max\u2011length names; no validation error is returned.",
+    "expected_result": "User creation is blocked, appropriate error code/message returned, no new record created",
     "tags": [
-      "boundary",
-      "positive",
-      "api"
+      "negative",
+      "api",
+      "validation",
+      "duplicate"
     ]
   },
   {
     "id": "TC_003",
     "requirement_id": "KAN-5",
-    "title": "Create User - Duplicate Email Should Fail",
-    "description": "Ensure that attempting to create a user with an email that already exists returns a conflict error.",
-    "preconditions": [
-      "A user with email duplicate@test.com already exists in the system."
-    ],
-    "test_type": "API",
-    "priority": "P0",
-    "steps": [
-      {
-        "step_number": 1,
-        "action": "Send POST request to /api/v1/users using an email that is already registered.",
-        "input_data": "{\"firstName\":\"Jane\",\"lastName\":\"Smith\",\"email\":\"duplicate@test.com\",\"password\":\"Password@123\",\"role\":\"USER\"}",
-        "expected_result": "Response status 409 Conflict and errorCode USR_409 with message 'Email already exists'."
-      }
-    ],
-    "test_data": {
-      "firstName": "Jane",
-      "lastName": "Smith",
-      "email": "duplicate@test.com",
-      "password": "Password@123",
-      "role": "USER"
-    },
-    "expected_result": "User is not created; system returns appropriate error indicating email uniqueness violation.",
-    "tags": [
-      "negative",
-      "api",
-      "validation",
-      "uniqueness"
-    ]
-  },
-  {
-    "id": "TC_004",
-    "requirement_id": "KAN-5",
     "title": "Create User - Invalid Email Format",
-    "description": "Verify that the API rejects a request when the email field does not conform to standard email format.",
+    "description": "Validate that the API rejects a request when the email field does not conform to standard email format.",
     "preconditions": [
-      "Admin JWT token is valid."
+      "Admin JWT token is valid"
     ],
     "test_type": "API",
     "priority": "P1",
     "steps": [
       {
         "step_number": 1,
-        "action": "Send POST request with malformed email address.",
-        "input_data": "{\"firstName\":\"Tom\",\"lastName\":\"Brown\",\"email\":\"invalid-email\",\"password\":\"Password@123\",\"role\":\"USER\"}",
-        "expected_result": "Response status 400 Bad Request with validation error indicating invalid email format."
-      }
-    ],
-    "test_data": {
-      "firstName": "Tom",
-      "lastName": "Brown",
-      "email": "invalid-email",
-      "password": "Password@123",
-      "role": "USER"
-    },
-    "expected_result": "User is not created; validation error returned for email field.",
-    "tags": [
-      "negative",
-      "api",
-      "validation"
-    ]
-  },
-  {
-    "id": "TC_005",
-    "requirement_id": "KAN-5",
-    "title": "Create User - Missing Mandatory Fields",
-    "description": "Confirm that the API returns an error when one or more required fields are omitted from the request payload.",
-    "preconditions": [
-      "Admin JWT token is valid."
-    ],
-    "test_type": "API",
-    "priority": "P0",
-    "steps": [
+        "action": "Send POST request to /api/v1/users with malformed email address",
+        "input_data": "{\"firstName\":\"Bob\",\"lastName\":\"Brown\",\"email\":\"bob.brown[at]example\",\"password\":\"Password@123\",\"role\":\"USER\",\"phoneNumber\":\"5551234567\",\"dateOfBirth\":\"1985-05-20\"}",
+        "expected_result": "HTTP 400 Bad Request returned"
+      },
       {
-        "step_number": 1,
-        "action": "Send POST request without the password field.",
-        "input_data": "{\"firstName\":\"Alice\",\"lastName\":\"Green\",\"email\":\"alice.green@test.com\",\"role\":\"ADMIN\"}",
-        "expected_result": "Response status 400 Bad Request with validation messages for missing password (and any other omitted mandatory fields)."
-      }
-    ],
-    "test_data": {
-      "firstName": "Alice",
-      "lastName": "Green",
-      "email": "alice.green@test.com",
-      "role": "ADMIN"
-    },
-    "expected_result": "User creation fails; API reports all missing mandatory fields.",
-    "tags": [
-      "negative",
-      "api",
-      "validation"
-    ]
-  },
-  {
-    "id": "TC_006",
-    "requirement_id": "KAN-5",
-    "title": "Create User - Unsupported Role Value",
-    "description": "Validate that the system rejects a role that is not part of the supported role list.",
-    "preconditions": [
-      "Admin JWT token is valid."
-    ],
-    "test_type": "API",
-    "priority": "P1",
-    "steps": [
-      {
-        "step_number": 1,
-        "action": "Send POST request with role set to an unsupported value.",
-        "input_data": "{\"firstName\":\"Bob\",\"lastName\":\"White\",\"email\":\"bob.white@test.com\",\"password\":\"Password@123\",\"role\":\"SUPERADMIN\"}",
-        "expected_result": "Response status 400 Bad Request with error indicating unsupported role."
+        "step_number": 2,
+        "action": "Validate error response payload",
+        "input_data": "",
+        "expected_result": "errorCode indicates validation error (e.g., \"USR_400\") and message mentions invalid email format"
       }
     ],
     "test_data": {
       "firstName": "Bob",
-      "lastName": "White",
-      "email": "bob.white@test.com",
-      "password": "Password@123",
-      "role": "SUPERADMIN"
-    },
-    "expected_result": "User is not created; validation error returned for role field.",
-    "tags": [
-      "negative",
-      "api",
-      "validation"
-    ]
-  },
-  {
-    "id": "TC_007",
-    "requirement_id": "KAN-5",
-    "title": "Create User - Password Policy Violation (Less Than 8 Characters)",
-    "description": "Ensure that a password not meeting the minimum length requirement is rejected.",
-    "preconditions": [
-      "Admin JWT token is valid."
-    ],
-    "test_type": "API",
-    "priority": "P1",
-    "steps": [
-      {
-        "step_number": 1,
-        "action": "Send POST request with password of 7 characters.",
-        "input_data": "{\"firstName\":\"Eve\",\"lastName\":\"Black\",\"email\":\"eve.black@test.com\",\"password\":\"Abc123!\",\"role\":\"USER\"}",
-        "expected_result": "Response status 400 Bad Request with validation error indicating password length requirement."
-      }
-    ],
-    "test_data": {
-      "firstName": "Eve",
-      "lastName": "Black",
-      "email": "eve.black@test.com",
-      "password": "Abc123!",
-      "role": "USER"
-    },
-    "expected_result": "User creation fails; API returns password policy violation message.",
-    "tags": [
-      "negative",
-      "api",
-      "validation"
-    ]
-  },
-  {
-    "id": "TC_008",
-    "requirement_id": "KAN-5",
-    "title": "Create User - Verify Audit Fields Persisted in Database",
-    "description": "After successful user creation, confirm that audit fields (createdBy, createdDate) are correctly stored in the users table.",
-    "preconditions": [
-      "Admin JWT token is valid and admin username is 'adminUser'.",
-      "Database connection is available for verification."
-    ],
-    "test_type": "DB",
-    "priority": "P2",
-    "steps": [
-      {
-        "step_number": 1,
-        "action": "Send POST request to create a new user with unique email.",
-        "input_data": "{\"firstName\":\"Sam\",\"lastName\":\"Taylor\",\"email\":\"sam.taylor@test.com\",\"password\":\"Password@123\",\"role\":\"USER\"}",
-        "expected_result": "Response status 201 Created."
-      },
-      {
-        "step_number": 2,
-        "action": "Query the users table for the record with email sam.taylor@test.com.",
-        "input_data": "SELECT createdBy, createdDate FROM users WHERE email='sam.taylor@test.com';",
-        "expected_result": "createdBy equals 'adminUser' and createdDate is a recent timestamp (within 5 seconds of request)."
-      }
-    ],
-    "test_data": {
-      "firstName": "Sam",
-      "lastName": "Taylor",
-      "email": "sam.taylor@test.com",
+      "lastName": "Brown",
+      "email": "bob.brown[at]example",
       "password": "Password@123",
       "role": "USER",
-      "createdBy": "adminUser"
+      "phoneNumber": "5551234567",
+      "dateOfBirth": "1985-05-20"
     },
-    "expected_result": "Audit fields are correctly persisted, confirming proper population of createdBy and createdDate.",
+    "expected_result": "Request is rejected with clear validation error for email format",
     "tags": [
-      "integration",
-      "db",
-      "audit",
-      "positive"
+      "negative",
+      "validation",
+      "api",
+      "email"
     ]
   }
 ]
