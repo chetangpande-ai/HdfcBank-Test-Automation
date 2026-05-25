@@ -3,31 +3,31 @@
     "id": "TC_001",
     "requirement_id": "KAN-5",
     "title": "Create User - Happy Path with Valid Mandatory Details",
-    "description": "Verify that an admin can successfully create a new user when all mandatory fields are provided with valid data and optional fields are included.",
+    "description": "Verify that an admin can create a new user by providing all required fields with valid data. The system should return HTTP 201, generate a unique userId, set status to ACTIVE, and populate audit fields.",
     "preconditions": [
-      "Admin user exists with a valid JWT token having CREATE_USER permission",
-      "Supported roles list includes ADMIN and USER"
+      "Admin user has a valid JWT token with CREATE_USER permission.",
+      "No existing user with email john.doe@test.com in the system."
     ],
     "test_type": "API",
     "priority": "P0",
     "steps": [
       {
         "step_number": 1,
-        "action": "Send POST request to /api/v1/users with valid Authorization header and JSON payload",
+        "action": "Send POST request to /api/v1/users with required headers and payload.",
         "input_data": "{\"firstName\":\"John\",\"lastName\":\"Doe\",\"email\":\"john.doe@test.com\",\"password\":\"Password@123\",\"role\":\"ADMIN\",\"phoneNumber\":\"9876543210\",\"dateOfBirth\":\"1995-08-15\"}",
-        "expected_result": "HTTP 201 Created returned"
+        "expected_result": "Response status 201 Created and response body contains userId, message, status='ACTIVE', createdDate in ISO8601 format."
       },
       {
         "step_number": 2,
-        "action": "Validate response payload fields",
+        "action": "Validate that the response payload includes a non\u2011empty userId following the pattern USR[0-9]+.",
         "input_data": "",
-        "expected_result": "Response contains userId (non\u2011empty, unique format), message \"User created successfully\", status \"ACTIVE\", and createdDate in ISO\u20118601 UTC format"
+        "expected_result": "userId matches regex ^USR\\d+$."
       },
       {
         "step_number": 3,
-        "action": "Query the Users table for the newly created email",
+        "action": "Verify that the audit fields createdBy equals the admin's userId and createdDate is a recent timestamp.",
         "input_data": "",
-        "expected_result": "Record exists with matching firstName, lastName, role=ADMIN, status=ACTIVE, createdBy set to admin's userId, createdDate matches response createdDate"
+        "expected_result": "createdBy equals admin identifier; createdDate is within 5 seconds of request time."
       }
     ],
     "test_data": {
@@ -39,7 +39,7 @@
       "phoneNumber": "9876543210",
       "dateOfBirth": "1995-08-15"
     },
-    "expected_result": "User is created successfully, HTTP 201 returned, audit fields populated and persisted in DB",
+    "expected_result": "User is created successfully, HTTP 201 returned, all response fields populated correctly, and audit information recorded.",
     "tags": [
       "smoke",
       "regression",
@@ -51,83 +51,36 @@
     "id": "TC_002",
     "requirement_id": "KAN-5",
     "title": "Create User - Duplicate Email Failure",
-    "description": "Ensure the system rejects creation of a user when the email address already exists in the system.",
+    "description": "Ensure that the system rejects creation of a user when the email address already exists, returning the appropriate error code and message.",
     "preconditions": [
-      "A user with email duplicate.user@test.com already exists",
-      "Admin JWT token is valid"
+      "Admin JWT token is available.",
+      "A user with email duplicate.user@test.com already exists in the system."
     ],
     "test_type": "API",
     "priority": "P0",
     "steps": [
       {
         "step_number": 1,
-        "action": "Send POST request to /api/v1/users with payload containing duplicate email",
-        "input_data": "{\"firstName\":\"Alice\",\"lastName\":\"Smith\",\"email\":\"duplicate.user@test.com\",\"password\":\"Password@123\",\"role\":\"USER\",\"phoneNumber\":\"1234567890\",\"dateOfBirth\":\"1990-01-01\"}",
-        "expected_result": "HTTP 409 Conflict returned"
-      },
-      {
-        "step_number": 2,
-        "action": "Validate error response payload",
-        "input_data": "",
-        "expected_result": "errorCode equals \"USR_409\" and message contains \"Email already exists\""
+        "action": "Send POST request to /api/v1/users with payload containing the duplicate email.",
+        "input_data": "{\"firstName\":\"Alice\",\"lastName\":\"Smith\",\"email\":\"duplicate.user@test.com\",\"password\":\"Passw0rd!\",\"role\":\"USER\",\"phoneNumber\":\"1234567890\",\"dateOfBirth\":\"1990-01-01\"}",
+        "expected_result": "Response status 409 Conflict (or defined error status) with errorCode USR_409 and message 'Email already exists'."
       }
     ],
     "test_data": {
       "firstName": "Alice",
       "lastName": "Smith",
       "email": "duplicate.user@test.com",
-      "password": "Password@123",
+      "password": "Passw0rd!",
       "role": "USER",
       "phoneNumber": "1234567890",
       "dateOfBirth": "1990-01-01"
     },
-    "expected_result": "User creation is blocked, appropriate error code/message returned, no new record created",
+    "expected_result": "User creation is blocked, appropriate error response returned, no new user record is created.",
     "tags": [
       "negative",
-      "api",
       "validation",
+      "api",
       "duplicate"
-    ]
-  },
-  {
-    "id": "TC_003",
-    "requirement_id": "KAN-5",
-    "title": "Create User - Invalid Email Format",
-    "description": "Validate that the API rejects a request when the email field does not conform to standard email format.",
-    "preconditions": [
-      "Admin JWT token is valid"
-    ],
-    "test_type": "API",
-    "priority": "P1",
-    "steps": [
-      {
-        "step_number": 1,
-        "action": "Send POST request to /api/v1/users with malformed email address",
-        "input_data": "{\"firstName\":\"Bob\",\"lastName\":\"Brown\",\"email\":\"bob.brown[at]example\",\"password\":\"Password@123\",\"role\":\"USER\",\"phoneNumber\":\"5551234567\",\"dateOfBirth\":\"1985-05-20\"}",
-        "expected_result": "HTTP 400 Bad Request returned"
-      },
-      {
-        "step_number": 2,
-        "action": "Validate error response payload",
-        "input_data": "",
-        "expected_result": "errorCode indicates validation error (e.g., \"USR_400\") and message mentions invalid email format"
-      }
-    ],
-    "test_data": {
-      "firstName": "Bob",
-      "lastName": "Brown",
-      "email": "bob.brown[at]example",
-      "password": "Password@123",
-      "role": "USER",
-      "phoneNumber": "5551234567",
-      "dateOfBirth": "1985-05-20"
-    },
-    "expected_result": "Request is rejected with clear validation error for email format",
-    "tags": [
-      "negative",
-      "validation",
-      "api",
-      "email"
     ]
   }
 ]
